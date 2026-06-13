@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Burnout Before It Breaks</title>
+<script src="scorm.js" onerror="this.onerror=null"></script>
+<script>
+// Fallback inline SCORM wrapper in case scorm.js failed to load (e.g. standalone file open)
+if (typeof SCORM === 'undefined') {
+  var SCORM = (function () {
+    var api = null, initialized = false;
+    function findAPI(win) {
+      var attempts = 0;
+      while (win && !win.API && win.parent && win.parent !== win && attempts < 10) { attempts++; win = win.parent; }
+      return win ? win.API : null;
+    }
+    function getAPI() {
+      if (api) return api;
+      try { api = findAPI(window); if (!api && window.opener) api = findAPI(window.opener); } catch(e) {}
+      return api;
+    }
+    function init(){ var a=getAPI(); if(a){ try{ a.LMSInitialize(""); initialized=true; }catch(e){} } }
+    function setScore(raw,max){ var a=getAPI(); if(a&&initialized){ try{ a.LMSSetValue("cmi.core.score.raw",String(raw)); a.LMSSetValue("cmi.core.score.min","0"); a.LMSSetValue("cmi.core.score.max",String(max)); a.LMSCommit(""); }catch(e){} } }
+    function setStatus(status){ var a=getAPI(); if(a&&initialized){ try{ a.LMSSetValue("cmi.core.lesson_status",status); a.LMSCommit(""); }catch(e){} } }
+    function finish(){ var a=getAPI(); if(a&&initialized){ try{ a.LMSFinish(""); }catch(e){} } }
+    try { window.addEventListener("beforeunload", finish); } catch(e){}
+    return { init:init, setScore:setScore, setStatus:setStatus, finish:finish };
+  })();
+}
+</script>
+<style>
+  :root{
+    --sage:#84B59F;
+    --eucalyptus:#69A297;
+    --slate:#50808E;
+    --dark:#2E4045;
+    --cream:#F4F7F5;
+    --risk:#C26B5A;
+    --warn:#E0B96A;
+    --white:#FFFFFF;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; font-family:Calibri, Arial, sans-serif; background:var(--cream); color:var(--dark);
+    min-height:100vh; display:flex; flex-direction:column; align-items:center;
+  }
+  #app{ width:100%; max-width:900px; min-height:100vh; display:flex; flex-direction:column; }
+
+  /* top bar */
+  #topbar{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:14px 20px; background:var(--dark); color:var(--white);
+  }
+  #topbar .title{font-family:Georgia, serif; font-weight:bold; font-size:18px;}
+  #score-badge{
+    background:var(--sage); color:var(--dark); font-weight:bold; padding:8px 16px;
+    border-radius:20px; font-size:15px; position:relative; min-width:90px; text-align:center;
+  }
+  .float-points{
+    position:absolute; right:10px; top:-6px; color:var(--sage); font-weight:bold;
+    font-size:18px; opacity:0; transition:all 1s ease-out; pointer-events:none;
+  }
+  .float-points.show{ opacity:1; transform:translateY(-30px); }
+
+  #progress-wrap{ height:6px; background:#dde6e2; }
+  #progress-bar{ height:100%; background:var(--sage); width:0%; transition:width .4s ease; }
+
+  /* scene container */
+  #scene{ flex:1; padding:24px 20px 40px; }
+
+  .scene-label{
+    font-size:12px; letter-spacing:2px; font-weight:bold; color:var(--slate); text-transform:uppercase;
+    margin-bottom:4px;
+  }
+  h1.scene-title{
+    font-family:Georgia, serif; font-size:28px; margin:0 0 16px 0; color:var(--dark);
+  }
+
+  .dialogue-card{
+    background:var(--white); border-radius:12px; padding:18px 20px; display:flex; gap:16px;
+    align-items:flex-start; box-shadow:0 4px 12px rgba(0,0,0,0.08); margin-bottom:18px;
+  }
+  .avatar{
+    width:56px; height:56px; border-radius:50%; flex-shrink:0; display:flex; align-items:center;
+    justify-content:center; color:var(--white); font-weight:bold; font-size:18px; font-family:Georgia,serif;
+  }
+  .dialogue-lines .line{ margin-bottom:10px; }
+  .dialogue-lines .speaker{ font-weight:bold; font-size:12px; letter-spacing:1px; text-transform:uppercase; }
+  .dialogue-lines .text{ font-style:italic; font-size:15px; line-height:1.45; margin-top:2px; }
+
+  .vo-controls{ display:flex; gap:10px; margin-bottom:20px; flex-wrap:wrap; align-items:center; }
+  button{
+    font-family:Calibri, Arial, sans-serif; cursor:pointer; border:none; border-radius:8px;
+    padding:10px 18px; font-size:14px; font-weight:bold; transition:transform .1s ease, opacity .2s;
+  }
+  button:active{ transform:scale(0.97); }
+  button:disabled{ opacity:0.45; cursor:not-allowed; }
+  .btn-vo{ background:var(--slate); color:var(--white); }
+  .btn-primary{ background:var(--sage); color:var(--dark); }
+  .btn-primary:disabled{ background:#cfd9d4; color:#8a9a93; }
+  .vo-status{ font-size:13px; color:var(--slate); font-style:italic; }
+
+  .prompt{ font-size:17px; font-weight:bold; color:var(--slate); margin:6px 0 14px; }
+
+  .choices{ display:grid; grid-template-columns:1fr; gap:16px; }
+  @media(min-width:680px){ .choices{ grid-template-columns:1fr 1fr; } }
+
+  .choice-card{
+    background:var(--white); border-radius:12px; padding:18px; box-shadow:0 4px 12px rgba(0,0,0,0.08);
+    border:2px solid transparent; cursor:pointer; text-align:left; transition:transform .15s ease, border-color .15s;
+    display:flex; flex-direction:column; gap:8px;
+  }
+  .choice-card:hover{ transform:translateY(-3px); }
+  .choice-card.A{ background:#EAF3EF; }
+  .choice-card.B{ background:#FBEFEC; }
+  .choice-card.selected.A{ border-color:var(--sage); }
+  .choice-card.selected.B{ border-color:var(--risk); }
+  .choice-card.disabled{ cursor:default; }
+  .choice-card.disabled:hover{ transform:none; }
+  .choice-letter{ font-family:Georgia,serif; font-weight:bold; font-size:20px; }
+  .choice-letter.A{ color:var(--sage); }
+  .choice-letter.B{ color:var(--risk); }
+  .choice-label{ font-weight:bold; font-size:15px; }
+  .choice-feedback{ font-size:13px; line-height:1.4; display:none; }
+  .choice-card.selected .choice-feedback{ display:block; }
+  .choice-var{ font-size:11px; font-weight:bold; display:none; margin-top:4px; }
+  .choice-var.A{ color:var(--eucalyptus); }
+  .choice-var.B{ color:var(--risk); }
+  .choice-card.selected .choice-var{ display:block; }
+
+  .footer-nav{ margin-top:24px; display:flex; justify-content:flex-end; }
+
+  /* welcome / conclusion */
+  .center-screen{
+    background:var(--dark); color:var(--white); border-radius:16px; padding:50px 30px; text-align:center;
+    display:flex; flex-direction:column; align-items:center; gap:18px;
+  }
+  .center-screen h1{ font-family:Georgia,serif; font-size:32px; margin:6px 0; }
+  .center-screen p{ font-size:15px; max-width:520px; color:var(--cream); line-height:1.5; }
+  .icon-circle{
+    width:90px; height:90px; border-radius:50%; background:var(--sage); display:flex; align-items:center;
+    justify-content:center; font-size:42px;
+  }
+
+  /* results */
+  .zones{ display:grid; grid-template-columns:1fr; gap:16px; }
+  @media(min-width:680px){ .zones{ grid-template-columns:1fr 1fr 1fr; } }
+  .zone-card{ background:#3A4F55; color:var(--cream); border-radius:12px; padding:16px; }
+  .zone-card.active{ outline:3px solid var(--sage); }
+  .zone-tag{ display:inline-block; padding:5px 12px; border-radius:6px; font-weight:bold; font-size:13px; color:var(--dark); margin-bottom:10px; }
+  .zone-title{ font-family:Georgia,serif; font-size:18px; font-weight:bold; margin-bottom:8px; }
+  .zone-desc{ font-size:13px; line-height:1.4; }
+  .score-summary{ text-align:center; font-size:17px; margin-bottom:20px; color:var(--dark); }
+
+  /* reflection / plan */
+  .radio-row{
+    background:var(--white); border-radius:10px; padding:14px 18px; margin-bottom:10px; display:flex;
+    align-items:center; gap:14px; cursor:pointer; box-shadow:0 2px 6px rgba(0,0,0,0.06);
+  }
+  .radio-row input{ width:18px; height:18px; accent-color:var(--eucalyptus); }
+  .plan-row{
+    background:var(--white); border-radius:10px; padding:16px 18px; margin-bottom:14px; box-shadow:0 2px 6px rgba(0,0,0,0.06);
+  }
+  .plan-row label{ font-weight:bold; display:block; margin-bottom:4px; }
+  .plan-row .hint{ font-size:12px; font-style:italic; color:var(--slate); margin-bottom:8px; }
+  .plan-row textarea{
+    width:100%; border:1px solid #d6e0db; border-radius:6px; padding:8px; font-family:Calibri,Arial,sans-serif;
+    font-size:14px; resize:vertical; min-height:42px;
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="topbar">
+    <div class="title">Burnout Before It Breaks</div>
+    <div id="score-badge">Score: 0
+      <span class="float-points" id="floatpts">+1</span>
+    </div>
+  </div>
+  <div id="progress-wrap"><div id="progress-bar"></div></div>
+  <div id="scene"></div>
+</div>
+
+<script>
+/* ============ STATE ============ */
+let current = 0;
+let score = 0;
+const MAX_SCORE = 5;
+
+/* ============ VOICEOVER ============ */
+const VOICES = {
+  narrator: { pitch: 1.0, rate: 0.95 },
+  maya:     { pitch: 1.25, rate: 1.0 },
+  manager:  { pitch: 0.85, rate: 1.0 },
+  coworker: { pitch: 1.15, rate: 1.05 }
+};
+
+function speakLines(lines, onDone) {
+  if (!('speechSynthesis' in window)) { if (onDone) onDone(); return; }
+  window.speechSynthesis.cancel();
+  let i = 0;
+  function next() {
+    if (i >= lines.length) { if (onDone) onDone(); return; }
+    const line = lines[i++];
+    const u = new SpeechSynthesisUtterance(line.text);
+    const voiceCfg = VOICES[line.speaker] || VOICES.narrator;
+    u.pitch = voiceCfg.pitch;
+    u.rate = voiceCfg.rate;
+    u.onend = next;
+    u.onerror = next;
+    window.speechSynthesis.speak(u);
+  }
+  next();
+}
+
+function stopSpeaking(){ if ('speechSynthesis' in window) window.speechSynthesis.cancel(); }
+
+/* ============ AVATARS ============ */
+const AVATAR_COLORS = {
+  maya: "69A297", manager: "50808E", coworker: "84B59F", narrator: "2E4045"
+};
+const AVATAR_LABEL = { maya: "M", manager: "Mgr", coworker: "C", narrator: "N" };
+
+function avatarHtml(speaker){
+  return `<div class="avatar" style="background:#${AVATAR_COLORS[speaker]||'2E4045'}">${AVATAR_LABEL[speaker]||'N'}</div>`;
+}
+
+/* ============ SCENES DATA ============ */
+const scenes = [];
+
+// 0: Welcome
+scenes.push({
+  type: "welcome"
+});
+
+// 1: Meet Maya
+scenes.push({
+  type: "info",
+  sceneLabel: "Introduction",
+  title: "Meet Maya",
+  avatar: "maya",
+  lines: [
+    { speaker: "narrator", text: "Meet Maya, a project coordinator at BrightPath Solutions." },
+    { speaker: "maya", text: "My team's been getting ready for a big client deadline. There's a lot riding on it — and honestly, I think that's just what it takes to succeed. A little stress never hurt anyone, right?" },
+    { speaker: "narrator", text: "Let's follow Maya through the next few weeks, and see how that belief holds up." }
+  ],
+  body: "Maya is a project coordinator at BrightPath Solutions. Recently, her workload has increased as her team prepares for a major client deadline. She believes stress is simply part of success.<br><br><em>As you go through this experience, watch for moments where Maya's beliefs about \u201cpushing through\u201d are tested.</em>"
+});
+
+// Scene 1
+scenes.push(scenarioScene({
+  sceneLabel: "Scene 1",
+  title: "Busy Season Begins",
+  avatar: "manager",
+  lines: [
+    { speaker: "narrator", text: "Monday morning. Maya opens her laptop to dozens of unread emails." },
+    { speaker: "manager", text: "Thanks everyone — we'll need everyone to push a little harder over the next few weeks to hit this deadline." },
+    { speaker: "maya", text: "Okay... I can handle this." },
+    { speaker: "narrator", text: "What does Maya do first? It's your choice." }
+  ],
+  body: "Monday morning. Maya opens her laptop and finds dozens of unread emails. Her manager messages the team: \u201cWe'll need everyone to push a little harder over the next few weeks.\u201d Maya wants to prove she can handle it.",
+  prompt: "What does Maya do first?",
+  choiceA: {
+    label: "Review priorities and focus on high-impact tasks.",
+    feedback: "Prioritizing helps Maya focus on what matters most. Not every task requires the same level of attention.",
+    points: 1,
+    vo: { speaker: "narrator", text: "Maya takes a breath and sorts her list by what truly matters today. Prioritizing helps her focus on what counts — not everything needs the same level of attention." }
+  },
+  choiceB: {
+    label: "Commit to handling everything herself.",
+    feedback: "Taking on everything may feel productive at first, but sustained overload can increase stress and fatigue over time.",
+    points: 0,
+    vo: { speaker: "narrator", text: "Maya decides she'll just handle it all herself. It feels productive in the moment, but taking on everything, all the time, is the first step toward overload." }
+  }
+}));
+
+// Scene 2
+scenes.push(scenarioScene({
+  sceneLabel: "Scene 2",
+  title: "The Disappearing Lunch Break",
+  avatar: "maya",
+  lines: [
+    { speaker: "narrator", text: "Two weeks pass. The deadline is closer, and Maya's lunch break has quietly disappeared." },
+    { speaker: "maya", text: "I'll take a proper break once things calm down... I just need to get through this stretch first." },
+    { speaker: "narrator", text: "How does Maya handle her midday break today?" }
+  ],
+  body: "Over the next two weeks, Maya begins working through lunch. She tells herself, \u201cI'll take a proper break once things calm down.\u201d",
+  prompt: "How does Maya handle her midday break?",
+  choiceA: {
+    label: "Schedule a protected lunch break.",
+    feedback: "Recovery breaks help restore attention and energy, even on busy days.",
+    points: 1,
+    vo: { speaker: "narrator", text: "Maya blocks thirty minutes on her calendar — no meetings, no email. Even a short recovery break helps restore focus and energy for the rest of the day." }
+  },
+  choiceB: {
+    label: "Continue working through lunch.",
+    feedback: "Working continuously may feel efficient, but it can increase fatigue and reduce focus over time.",
+    points: 0,
+    vo: { speaker: "narrator", text: "Maya eats at her desk, eyes on her screen, answering messages between bites. It feels like she's getting ahead, but without real breaks, fatigue tends to quietly build." }
+  }
+}));
+
+// Scene 3
+scenes.push(scenarioScene({
+  sceneLabel: "Scene 3",
+  title: "The First Warning Sign",
+  avatar: "maya",
+  lines: [
+    { speaker: "narrator", text: "Maya wakes up tired, even though she slept a full night. Small things suddenly feel much more irritating than they should." },
+    { speaker: "maya", text: "Why am I so on edge today? I got plenty of sleep..." },
+    { speaker: "narrator", text: "This is the first warning sign. How does Maya respond?" }
+  ],
+  body: "Maya wakes up feeling exhausted despite getting enough sleep. She struggles to focus and feels unusually irritated — even small things seem to bother her more than usual.",
+  prompt: "How does Maya respond to this change?",
+  choiceA: {
+    label: "Reflect on what might be causing these changes.",
+    feedback: "Awareness is often the first step in preventing burnout. Noticing a change is valuable information.",
+    points: 1,
+    vo: { speaker: "narrator", text: "Maya pauses and asks herself what might be going on. Noticing a change, without judgment, is often the first step toward preventing burnout." }
+  },
+  choiceB: {
+    label: "Ignore the feeling and keep pushing.",
+    feedback: "Ignoring early warning signs can make it harder to recognize patterns before they grow.",
+    points: 0,
+    vo: { speaker: "narrator", text: "Maya shrugs it off and dives back into her task list. It's easy to push past a feeling like this, but doing so can make the pattern harder to recognize later." }
+  }
+}));
+
+// Scene 4
+scenes.push(scenarioScene({
+  sceneLabel: "Scene 4",
+  title: "Pulling Away",
+  avatar: "coworker",
+  lines: [
+    { speaker: "coworker", text: "Hey Maya — a few of us are grabbing lunch. Want to come?" },
+    { speaker: "narrator", text: "Maya almost says no without even thinking about it." },
+    { speaker: "maya", text: "I've got so much to do... maybe I should just stay at my desk." },
+    { speaker: "narrator", text: "What does Maya choose to do?" }
+  ],
+  body: "A coworker stops by Maya's desk: \u201cHey, a few of us are grabbing lunch — want to come?\u201d Maya almost says no without thinking.",
+  prompt: "What does Maya choose to do?",
+  choiceA: {
+    label: "Accept the invitation.",
+    feedback: "Social connection can offer support and a helpful change of perspective during stressful periods.",
+    points: 1,
+    vo: { speaker: "narrator", text: "Maya closes her laptop and goes. Twenty minutes with people who understand the pressure she's under turns out to be exactly what she needed." }
+  },
+  choiceB: {
+    label: "Continue isolating herself.",
+    feedback: "Withdrawing from others may feel like saving time, but it can increase stress and reduce opportunities for support.",
+    points: 0,
+    vo: { speaker: "narrator", text: "Maya says she's too busy and stays behind. It feels like she's protecting her time, but pulling away from others can quietly add to the weight she's carrying." }
+  }
+}));
+
+// Scene 5
+scenes.push(scenarioScene({
+  sceneLabel: "Scene 5",
+  title: "Losing Interest",
+  avatar: "maya",
+  lines: [
+    { speaker: "narrator", text: "Work that used to feel engaging now feels heavy. Maya catches herself rereading the same paragraph three times, and she's made a few small mistakes this week." },
+    { speaker: "maya", text: "I used to like this project. Now I just want it to be over." },
+    { speaker: "narrator", text: "What does Maya choose to do next?" }
+  ],
+  body: "Projects Maya once enjoyed now feel exhausting. She notices herself procrastinating, double-checking her work more than usual, and making small mistakes.",
+  prompt: "What does Maya choose to do next?",
+  choiceA: {
+    label: "Discuss workload concerns and seek support.",
+    feedback: "Seeking support can help identify solutions before burnout worsens — this is a sign of strength, not weakness.",
+    points: 1,
+    vo: { speaker: "narrator", text: "Maya messages her manager and asks for fifteen minutes to talk about her workload. Raising a concern early can open the door to real solutions." }
+  },
+  choiceB: {
+    label: "Work longer hours to catch up.",
+    feedback: "Working harder without recovery may intensify burnout symptoms rather than resolve them.",
+    points: 0,
+    vo: { speaker: "narrator", text: "Maya decides to stay late again, hoping extra hours will fix the feeling. But working harder, without rest, often deepens exhaustion rather than relieving it." }
+  }
+}));
+
+// Results screen
+scenes.push({ type: "results" });
+
+// Reflection
+scenes.push({ type: "reflection" });
+
+// Prevention plan
+scenes.push({ type: "plan" });
+
+// Conclusion
+scenes.push({ type: "conclusion" });
+
+function scenarioScene(cfg){ cfg.type = "scenario"; return cfg; }
+
+/* ============ RENDER ============ */
+const sceneEl = document.getElementById("scene");
+const scoreBadge = document.getElementById("score-badge");
+const progressBar = document.getElementById("progress-bar");
+
+function updateScoreBadge(delta){
+  scoreBadge.childNodes[0].textContent = "Score: " + score;
+  if (delta){
+    const fp = document.getElementById("floatpts");
+    fp.textContent = (delta > 0 ? "+" + delta : delta);
+    fp.classList.remove("show");
+    void fp.offsetWidth;
+    fp.classList.add("show");
+  }
+}
+
+function updateProgress(){
+  const pct = Math.round((current / (scenes.length - 1)) * 100);
+  progressBar.style.width = pct + "%";
+}
+
+function goTo(index){
+  stopSpeaking();
+  current = index;
+  updateProgress();
+  render();
+}
+
+function render(){
+  const sc = scenes[current];
+  sceneEl.innerHTML = "";
+  if (sc.type === "welcome") renderWelcome(sc);
+  else if (sc.type === "info") renderInfo(sc);
+  else if (sc.type === "scenario") renderScenario(sc);
+  else if (sc.type === "results") renderResults();
+  else if (sc.type === "reflection") renderReflection();
+  else if (sc.type === "plan") renderPlan();
+  else if (sc.type === "conclusion") renderConclusion();
+}
+
+function renderWelcome(){
+  sceneEl.innerHTML = `
+    <div class="center-screen">
+      <div class="icon-circle">🌱</div>
+      <h1>Burnout Before It Breaks</h1>
+      <p style="font-style:italic; color:var(--sage);">A scenario-based learning experience</p>
+      <p>Burnout rarely happens overnight. In this experience, you'll follow Maya through a busy season at work.
+      Along the way, you'll make the same choices she does — and earn points for choices that support healthy,
+      sustainable habits.</p>
+      <button class="btn-primary" id="startBtn">▶ Start</button>
+    </div>`;
+  document.getElementById("startBtn").onclick = () => {
+    speakLines([
+      { speaker: "narrator", text: "Burnout rarely happens overnight. It builds slowly, through small choices made under pressure, choices that feel normal in the moment, but add up over time. In this experience, you'll follow Maya through a busy season at work. Along the way, you'll make the same choices she does. Pay attention to how each one feels, and what it costs. Let's begin." }
+    ]);
+    goTo(current + 1);
+  };
+}
+
+function renderInfo(sc){
+  sceneEl.innerHTML = `
+    <div class="scene-label">${sc.sceneLabel}</div>
+    <h1 class="scene-title">${sc.title}</h1>
+    <div class="dialogue-card">
+      ${avatarHtml(sc.avatar)}
+      <div class="dialogue-lines">${sc.lines.map(l => `
+        <div class="line"><div class="speaker" style="color:#${AVATAR_COLORS[l.speaker]}">${labelFor(l.speaker)}</div>
+        <div class="text">${l.text}</div></div>`).join("")}
+      </div>
+    </div>
+    <div class="vo-controls">
+      <button class="btn-vo" id="voBtn">🔊 Play Voiceover</button>
+      <span class="vo-status" id="voStatus"></span>
+    </div>
+    <p style="font-size:15px; line-height:1.6;">${sc.body}</p>
+    <div class="footer-nav"><button class="btn-primary" id="nextBtn">Continue →</button></div>
+  `;
+  wireVO(sc.lines);
+  document.getElementById("nextBtn").onclick = () => goTo(current + 1);
+}
+
+function labelFor(speaker){
+  return { maya: "Maya", manager: "Manager", coworker: "Coworker", narrator: "Narrator" }[speaker] || "Narrator";
+}
+
+function wireVO(lines){
+  const btn = document.getElementById("voBtn");
+  const status = document.getElementById("voStatus");
+  btn.onclick = () => {
+    btn.disabled = true;
+    status.textContent = "Playing...";
+    speakLines(lines, () => { btn.disabled = false; status.textContent = ""; });
+  };
+}
+
+function renderScenario(sc){
+  sceneEl.innerHTML = `
+    <div class="scene-label">${sc.sceneLabel}</div>
+    <h1 class="scene-title">${sc.title}</h1>
+    <div class="dialogue-card">
+      ${avatarHtml(sc.avatar)}
+      <div class="dialogue-lines">${sc.lines.map(l => `
+        <div class="line"><div class="speaker" style="color:#${AVATAR_COLORS[l.speaker]}">${labelFor(l.speaker)}</div>
+        <div class="text">${l.text}</div></div>`).join("")}
+      </div>
+    </div>
+    <div class="vo-controls">
+      <button class="btn-vo" id="voBtn">🔊 Play Voiceover</button>
+      <span class="vo-status" id="voStatus"></span>
+    </div>
+    <div class="prompt">${sc.prompt}</div>
+    <div class="choices">
+      <div class="choice-card A" data-choice="A">
+        <div class="choice-letter A">A</div>
+        <div class="choice-label">${sc.choiceA.label}</div>
+        <div class="choice-feedback">${sc.choiceA.feedback}</div>
+        <div class="choice-var A">${sc.choiceA.points > 0 ? "BurnoutRiskScore +" + sc.choiceA.points : "No change"}</div>
+      </div>
+      <div class="choice-card B" data-choice="B">
+        <div class="choice-letter B">B</div>
+        <div class="choice-label">${sc.choiceB.label}</div>
+        <div class="choice-feedback">${sc.choiceB.feedback}</div>
+        <div class="choice-var B">${sc.choiceB.points > 0 ? "BurnoutRiskScore +" + sc.choiceB.points : "No change"}</div>
+      </div>
+    </div>
+    <div class="footer-nav"><button class="btn-primary" id="nextBtn" disabled>Continue →</button></div>
+  `;
+  wireVO(sc.lines);
+
+  const cards = sceneEl.querySelectorAll(".choice-card");
+  const nextBtn = document.getElementById("nextBtn");
+  let answered = false;
+
+  cards.forEach(card => {
+    card.onclick = () => {
+      if (answered) return;
+      answered = true;
+      const which = card.getAttribute("data-choice");
+      const choice = which === "A" ? sc.choiceA : sc.choiceB;
+      cards.forEach(c => c.classList.add("disabled"));
+      card.classList.add("selected");
+
+      if (choice.points > 0){
+        score += choice.points;
+        updateScoreBadge(choice.points);
+      } else {
+        updateScoreBadge(0);
+      }
+
+      nextBtn.disabled = false;
+      const btn = document.getElementById("voBtn");
+      const status = document.getElementById("voStatus");
+      btn.disabled = true;
+      status.textContent = "Playing feedback...";
+      speakLines([choice.vo], () => { btn.disabled = false; status.textContent = ""; });
+    };
+  });
+
+  nextBtn.onclick = () => goTo(current + 1);
+}
+
+function renderResults(){
+  let zoneIndex;
+  if (score >= 4) zoneIndex = 0;
+  else if (score >= 2) zoneIndex = 1;
+  else zoneIndex = 2;
+
+  const zones = [
+    { range: "4–5 points", title: "Healthy Prevention Zone", color: "84B59F",
+      desc: "You recognized several warning signs and took proactive action — prioritizing, resting, connecting, and speaking up." },
+    { range: "2–3 points", title: "Emerging Risk Zone", color: "E0B96A",
+      desc: "Some warning signs were addressed, while others may need more attention. Small adjustments now can make a big difference." },
+    { range: "0–1 points", title: "High Risk Zone", color: "C26B5A",
+      desc: "Several warning signs were overlooked. Consider how earlier action — a break, a conversation, a pause — might have changed the outcome." }
+  ];
+
+  sceneEl.innerHTML = `
+    <div class="scene-label">Results</div>
+    <h1 class="scene-title">Your Burnout Prevention Profile</h1>
+    <div class="score-summary">You scored <strong>${score} / ${MAX_SCORE}</strong> based on the choices you made for Maya.</div>
+    <div class="vo-controls">
+      <button class="btn-vo" id="voBtn">🔊 Play Voiceover</button>
+      <span class="vo-status" id="voStatus"></span>
+    </div>
+    <div class="zones">
+      ${zones.map((z,i) => `
+        <div class="zone-card ${i===zoneIndex ? "active":""}">
+          <div class="zone-tag" style="background:#${z.color}">${z.range}</div>
+          <div class="zone-title" style="color:#${z.color}">${z.title}</div>
+          <div class="zone-desc">${z.desc}</div>
+        </div>`).join("")}
+    </div>
+    <div class="footer-nav"><button class="btn-primary" id="nextBtn">Continue →</button></div>
+  `;
+
+  const zoneVO = [
+    { speaker: "narrator", text: "You've followed Maya through five key moments. Each choice you made added to her Burnout Risk Score. Now let's see what your choices revealed." },
+    { speaker: "narrator", text: zones[zoneIndex].title === "Healthy Prevention Zone"
+        ? "You recognized several warning signs and took proactive steps along the way. Well done."
+        : zones[zoneIndex].title === "Emerging Risk Zone"
+        ? "You addressed some warning signs, while others may need a little more attention."
+        : "Several warning signs were overlooked. Take a moment to consider how earlier action might have changed the outcome. There's no judgment here, only awareness." }
+  ];
+  wireVO(zoneVO);
+  document.getElementById("nextBtn").onclick = () => goTo(current + 1);
+
+  // Report score to LMS as soon as results are shown
+  SCORM.setScore(score, MAX_SCORE);
+}
+
+function renderReflection(){
+  const options = ["Fatigue", "Irritability", "Withdrawal", "Reduced motivation", "Difficulty disconnecting"];
+  sceneEl.innerHTML = `
+    <div class="scene-label">Personal Reflection</div>
+    <h1 class="scene-title">Reflect on Your Own Experience</h1>
+    <div class="vo-controls">
+      <button class="btn-vo" id="voBtn">🔊 Play Voiceover</button>
+      <span class="vo-status" id="voStatus"></span>
+    </div>
+    <div class="prompt">Which warning sign would you be most likely to overlook in your own life?</div>
+    ${options.map((o,i) => `
+      <label class="radio-row"><input type="radio" name="reflect" value="${o}"> ${o}</label>
+    `).join("")}
+    <div class="footer-nav"><button class="btn-primary" id="nextBtn">Continue →</button></div>
+  `;
+  wireVO([
+    { speaker: "narrator", text: "Maya's story is one version of how burnout can develop. But everyone's pattern looks a little different. Take a moment to think about your own routines. Which of these warning signs would you be most likely to overlook in yourself: fatigue, irritability, withdrawal, reduced motivation, or difficulty disconnecting? There's no right answer, just notice what comes to mind first." }
+  ]);
+  document.getElementById("nextBtn").onclick = () => goTo(current + 1);
+}
+
+function renderPlan(){
+  const items = [
+    { label: "My earliest warning sign is...", hint: "What's the first thing that changes for you?" },
+    { label: "My recovery habit is...", hint: "What helps you genuinely recharge?" },
+    { label: "One action I will take this week is...", hint: "Be specific and realistic." },
+    { label: "One person I can contact for support is...", hint: "A name you can actually reach out to." }
+  ];
+  sceneEl.innerHTML = `
+    <div class="scene-label">Putting It Into Practice</div>
+    <h1 class="scene-title">My Prevention Plan</h1>
+    <div class="vo-controls">
+      <button class="btn-vo" id="voBtn">🔊 Play Voiceover</button>
+      <span class="vo-status" id="voStatus"></span>
+    </div>
+    ${items.map(it => `
+      <div class="plan-row">
+        <label>${it.label}</label>
+        <div class="hint">${it.hint}</div>
+        <textarea rows="2"></textarea>
+      </div>
+    `).join("")}
+    <div class="footer-nav"><button class="btn-primary" id="nextBtn">Finish →</button></div>
+  `;
+  wireVO([
+    { speaker: "narrator", text: "Awareness matters, but a plan makes it real. Take a few minutes now to fill out your own prevention plan. Think about your earliest warning sign, a recovery habit that genuinely helps you, one action you can take this week, and one person you could reach out to for support. Write down whatever comes to mind, you can always revisit and update this later." }
+  ]);
+  document.getElementById("nextBtn").onclick = () => goTo(current + 1);
+}
+
+function renderConclusion(){
+  sceneEl.innerHTML = `
+    <div class="center-screen">
+      <div class="icon-circle">🌱</div>
+      <h1>Burnout rarely appears suddenly.</h1>
+      <p>It develops through a series of small, overlooked warning signs. Recognizing those signs early
+      creates real opportunities to respond — before stress becomes burnout.</p>
+      <div class="vo-controls">
+        <button class="btn-vo" id="voBtn">🔊 Play Voiceover</button>
+        <span class="vo-status" id="voStatus"></span>
+      </div>
+      <div style="background:var(--sage); color:var(--dark); padding:10px 24px; border-radius:10px; font-weight:bold; letter-spacing:1px;">
+        FINAL SCORE: ${score} / ${MAX_SCORE}
+      </div>
+      <p style="font-size:13px; opacity:0.8;">Thank you for completing this module.</p>
+    </div>
+  `;
+  wireVO([
+    { speaker: "narrator", text: "Burnout rarely appears suddenly. It develops gradually, through small, overlooked warning signs: skipped breaks, ignored fatigue, quiet withdrawal. But each of those moments is also an opportunity, a chance to pause, to ask for support, to choose differently. Thank you for spending this time with Maya's story, and with your own. Take care of yourself out there." }
+  ]);
+
+  // Final SCORM reporting
+  SCORM.setScore(score, MAX_SCORE);
+  SCORM.setStatus(score >= 2 ? "completed" : "completed"); // module is complete regardless of score
+}
+
+/* ============ INIT ============ */
+try { SCORM.init(); } catch(e) { console.warn("SCORM init skipped:", e); }
+updateProgress();
+render();
+</script>
+</body>
+</html>
